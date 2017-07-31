@@ -1,0 +1,216 @@
+#!/bin/bash
+
+# pkg_json creates a basic/default package.json file in the current directory.
+function pkg_json() {
+	local dir=${PWD##*/}
+	local pkg=$(cat <<EOF
+{
+  "name": "$dir",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "webpack-dev-server --content-base dist --inline --hot",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "$USER",
+  "license": "ISC",
+  "description": "Basic redux + react project saver."
+}
+EOF
+		  )
+	echo "$pkg" > package.json
+}
+
+# install_sink installs the kitchen sink which is to say it installs all
+# kinds of babel, loaders, react, redux, etc.
+function install_sink() {
+	npm install -S \
+		react \
+		react-dom \
+		redux \
+	    babel-core \
+		babel-loader \
+		babel-plugin-add-module-exports \
+		babel-plugin-react-html-attrs \
+		babel-plugin-transform-class-properties \
+		babel-plugin-transform-decorators-legacy \
+		babel-preset-es2015 \
+		babel-preset-react \
+		babel-preset-stage-0 \
+		node-sass \
+		file-loader \
+		style-loader \
+		css-loader \
+		sass-loader \
+		webpack \
+		webpack-dev-server
+}
+
+# wp_js creates wthe webpack.config.js file for the basic project.  It
+# references most things that were installed via npm (react, babel, etc).
+function wp_js() {
+	local wp=$(cat <<EOF
+var debug = process.env.NODE_ENV !== "production";
+var webpack = require('webpack');
+var path = require('path');
+
+module.exports = {
+  context: path.join(__dirname, "src"),
+  devtool: debug ? "inline-sourcemap" : false,
+  entry: "./js/client.js",
+  module: {
+    loaders: [
+      {
+        test: /\.js?$/,
+        exclude: /(node_modules|bower_components)/,
+        loader: 'babel-loader',
+        query: {
+          presets: ['react', 'es2015', 'stage-0'],
+          plugins: [
+              'react-html-attrs',
+              'transform-decorators-legacy',
+              'transform-class-properties'
+          ]
+        }
+      },
+      {
+        test: /\.css$/,
+        loaders: ['style-loader','css-loader']
+      },
+      {
+        test: /\.scss$/,
+        loaders: ['style-loader', 'css-loader', 'sass-loader']
+      }
+    ]
+  },
+  output: {
+    path: __dirname + "/dist/",
+    filename: "client.js"
+  },
+  plugins: debug ? [] : [
+    new webpack.optimize.DedupePlugin(),
+    new webpack.optimize.OccurrenceOrderPlugin(),
+    new webpack.optimize.UglifyJsPlugin({ mangle: false, sourcemap: false }),
+  ],
+};
+EOF
+)
+
+    echo "$wp" > webpack.config.js
+}
+
+# index_html creates a minimal HTML5 .html file for that serves the app.
+function index_html() {
+	local index=$(cat <<EOF
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>React Tutorials</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="client.js"></script>
+  </body>
+</html>
+EOF
+)
+
+	echo "$index" > src/index.html
+}
+
+# entry_js create a src/client.js file that's used as the app's entry point.
+function entry_js() {
+	local entry=$(cat <<EOF
+import React from "react";
+import ReactDOM from "react-dom";
+
+require("file-loader?name=index.html!../index.html");
+
+class Layout extends React.Component {
+	render() {
+		const { title } = this.props;
+		return (
+			<div>{ title }</div>
+		)
+	}
+}
+
+const render = () => {
+    const app = document.getElementById('app');
+    ReactDOM.render(<Layout title="Entry JS" />, app);
+};
+
+render();
+EOF
+)
+
+	mkdir -p src/js/
+	echo "$entry" > src/js/client.js
+}
+
+# clean will remove from the current directory the following assets:
+#     node_modules/
+#     src/
+#     dist/
+#     .git/
+#     package.json
+#     webpack.config.js
+#     .gitignore
+#
+# Be careful when and where you run it.
+function clean() {
+	rm -rf \
+	   node_modules \
+	   src \
+	   dist \
+	   .git \
+	   package.json \
+	   webpack.config.js \
+	   .gitignore
+}
+
+# all runs every task in series and then builds the application which
+# should output assets into the target output folder (./dist/).
+function all() {
+	wp_js
+	entry_js
+	index_html
+	pkg_json
+	install_sink
+	./node_modules/.bin/webpack
+}
+
+# serve is a helper sub-command to start the webpack-dev-server running
+# with the content base as ./dist/ and hot module reloads turned on.
+# Alternatively, running 'npm run dev' will the same provided that the
+# rest of the setup has completed successfully.
+function serve() {
+	./node_modules/.bin/webpack-dev-server --content-base dist --inline --hot
+}
+
+# _help outputs the usage (and will eventually provide some doc about the other
+# sub-commands that can be ran.
+function _help() {
+	local usage=$(cat <<EOF
+The sink.sh script has a few useful sub-command, but the normal use it to first
+run 'all' and then 'serve' the results from the dist/ directory.
+
+Usage:
+%> $0 all 
+%> $0 serve
+
+EOF
+		 )
+
+	echo "$usage"
+}
+
+# If no sub-command is provided, then just output the usage
+if [ -z "$1" ]; then
+	_help
+else
+	# The sub-command can include 'help'
+	$1 $*
+fi
+
